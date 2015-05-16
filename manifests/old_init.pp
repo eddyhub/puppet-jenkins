@@ -23,6 +23,18 @@
 #   this module.
 #   This is for folks that use a custom repo, or the like.
 #
+# package_name = 'jenkins'
+#   Optionally override the package name
+#
+# direct_download = 'http://...'
+#   Ignore repostory based package installation and download and install
+#   package directly.  Leave as `false` (the default) to download using your
+#   OS package manager
+#
+# package_cache_dir  = '/var/cache/jenkins_pkgs'
+#   Optionally specify an alternate location to download packages to when using
+#   direct_download
+#
 # service_enable = true (default)
 #   Enable (or not) the jenkins service
 #
@@ -32,13 +44,16 @@
 # config_hash = undef (Default)
 #   Hash with config options to set in sysconfig/jenkins defaults/jenkins
 #
+# executors = undef (Default)
+#   Integer number of executors on the Jenkin's master.
+#
 # Example use
 #
 # class{ 'jenkins':
 #   config_hash => {
 #     'HTTP_PORT' => { 'value' => '9090' }, 'AJP_PORT' => { 'value' => '9009' }
 #   }
-# V
+# }
 #
 # plugin_hash = undef (Default)
 # Hash with config plugins to install
@@ -65,6 +80,23 @@
 #    'git-client': {}
 #    'token-macro': {}
 #
+#
+# user_hash = {} (Default)
+# Hash with users to create in jenkins
+#
+# Example use
+#
+# class{ 'jenkins':
+#   user_hash => {
+#     'user1' => { 'password' => 'pass1',
+#                     'email' => 'user1@example.com'}
+#
+# Or in Hiera
+#
+# jenkins::user_hash:
+#     'user1':
+#       password: 'pass1'
+#       email: 'user1@example.com'
 #
 # configure_firewall = undef (default)
 #   For folks that want to manage the puppetlabs firewall module.
@@ -109,22 +141,27 @@ class jenkins(
   $version            = $jenkins::params::version,
   $lts                = $jenkins::params::lts,
   $repo               = $jenkins::params::repo,
+  $package_name       = $jenkins::params::package_name,
+  $direct_download    = false,
+  $package_cache_dir  = $jenkins::params::package_cache_dir,
+  $package_provider   = $jenkins::params::package_provider,
   $service_enable     = $jenkins::params::service_enable,
   $service_ensure     = $jenkins::params::service_ensure,
   $config_hash        = {},
   $plugin_hash        = {},
   $job_hash           = {},
+  $user_hash          = {},
   $configure_firewall = undef,
   $install_java       = $jenkins::params::install_java,
-  $proxy_hostname     = undef,
+  $proxy_host         = undef,
   $proxy_port         = undef,
-  $proxy_user_name    = undef,
-  $proxy_password     = undef,
-  $no_proxy_host_list = undef,
+  $no_proxy_list      = undef,
+  $cli                = undef,
   $cli_tries          = $jenkins::params::cli_tries,
   $cli_try_sleep      = $jenkins::params::cli_try_sleep,
   $port               = $jenkins::params::port,
   $libdir             = $jenkins::params::libdir,
+  $executors          = undef,
 ) inherits jenkins::params {
 
   validate_bool($lts, $install_java, $repo)
@@ -132,6 +169,14 @@ class jenkins(
 
   if $configure_firewall {
     validate_bool($configure_firewall)
+  }
+
+  if $no_proxy_list {
+    validate_array($no_proxy_list)
+  }
+
+  if $executors {
+    validate_integer($executors)
   }
 
   anchor {'jenkins::begin':}
@@ -143,16 +188,26 @@ class jenkins(
     }
   }
 
-  if $repo {
-    include jenkins::repo
+  if $direct_download {
+    $repo_ = false
+    $jenkins_package_class = 'jenkins::direct_download'
+  } else {
+    $jenkins_package_class = 'jenkins::package'
+    if $repo {
+      $repo_ = true
+      include jenkins::repo
+    } else {
+      $repo_ = false
+    }
   }
+  include $jenkins_package_class
 
-  include jenkins::package
   include jenkins::config
   include jenkins::plugins
   include jenkins::jobs
+  include jenkins::users
 
-  if $proxy_hostname and $proxy_port {
+  if $proxy_host and $proxy_port {
     class { 'jenkins::proxy':
       require => Package['jenkins'],
       notify  => Service['jenkins']
@@ -171,33 +226,45 @@ class jenkins(
 
   if $cli {
     include jenkins::cli
+    include jenkins::cli::reload
+  }
+
+  if $executors {
+    jenkins::cli::exec { 'set_num_executors':
+      command => ['set_num_executors', $executors],
+      unless  => "[ \$(\$HELPER_CMD get_num_executors) -eq ${executors} ]"
+    }
+
+    Class['jenkins::cli'] ->
+      Jenkins::Cli::Exec['set_num_executors'] ->
+        Class['jenkins::jobs']
   }
 
   Anchor['jenkins::begin'] ->
-    Class['jenkins::package'] ->
+    Class[$jenkins_package_class] ->
       Class['jenkins::config'] ->
-#        Class['jenkins::proxy']
-          Class['jenkins::plugins'] ~>
-            Class['jenkins::service'] ->
-              Class['jenkins::jobs'] ->
-                Anchor['jenkins::end']
+        Class['jenkins::plugins'] ~>
+          Class['jenkins::service'] ->
+            Class['jenkins::jobs'] ->
+              Anchor['jenkins::end']
 
-  # if $cli {
-  #   Anchor['jenkins::begin'] ->
-  #     Class['jenkins::service'] ->
-  #       Class['jenkins::cli'] ->
-  #         Class['jenkins::jobs'] ->
-  #           Anchor['jenkins::end']
-  # }
+  if $cli {
+    Anchor['jenkins::begin'] ->
+      Class['jenkins::service'] ->
+        Class['jenkins::cli'] ->
+          Class['jenkins::cli::reload'] ->
+            Class['jenkins::jobs'] ->
+              Anchor['jenkins::end']
+  }
 
   if $install_java {
     Anchor['jenkins::begin'] ->
       Class['java'] ->
-        Class['jenkins::package'] ->
+        Class[$jenkins_package_class] ->
           Anchor['jenkins::end']
   }
 
-  if $repo {
+  if $repo_ {
     Anchor['jenkins::begin'] ->
       Class['jenkins::repo'] ->
         Class['jenkins::package'] ->

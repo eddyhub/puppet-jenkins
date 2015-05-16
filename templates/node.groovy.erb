@@ -1,0 +1,118 @@
+/*
+ * The MIT License
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ */
+
+import hudson.model.*
+import hudson.slaves.*
+import jenkins.model.*
+import jenkins.slaves.*
+import hudson.plugins.sshslaves.*
+
+// TODO:
+// * Add more comments and more log output, maybe even use an extra log file
+// * Fix pinned versions
+// * If dynamic load doesn't work restart jenkins
+// * Install dependencies
+// * Add Threads so we can download and install in parallel
+// * Enable/disable plugin
+// * Fix error if plugin is installed by url but the url points to a different version
+// * add tests
+
+////////////////////////////////////////////////////////////////////////////////
+// Header for log
+////////////////////////////////////////////////////////////////////////////////
+println("########## START: configuring slave: <%= @title %> ##########")
+////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Installs a name either from a file, an URL, or from update center.
+ * Much of the code is from the package hudson.cli
+ */
+
+class JenkinsSlave {
+  ////////////////////////////////////////////////////////////////////////////////
+  // defines which puppet provides
+  ////////////////////////////////////////////////////////////////////////////////
+
+  def name = "<%= @title %>"
+  def nodeDescription = "<%= @node_description %>"
+  def remoteFS = "<%= @remote_fs %>"
+  def numExecutors = "<%= @num_executors %>"
+
+  <% if @mode == 'normal' %>
+  def mode = Node.Mode.NORMAL
+  <% else %>
+  def mode = Node.Mode.EXCLUSIVE
+  <% end %>
+
+  def labelString = "<%= @label %>"
+  <% if @retention_strategy == 'always' %>
+  def retentionStrategy = new RetentionStrategy.Always()
+  <% else %>
+  def retentionStrategy = new RetentionStrategy.Demand()
+  <% end %>
+
+  def host  = "<%= @host %>"
+  def port = <%= @port %>
+  def credentialsID = "<%= @credentials_id %>"
+  def launchTimeoutSeconds = <%= @launcher_timeout_seconds %>
+  def maxNumRetries = <%= @max_num_retries %>
+  def retryWaitTime = <%= @retry_wait_time %>
+
+  ////////////////////////////////////////////////////////////////////////////////
+
+  def jenkinsInstance = Jenkins.getInstance();
+  def nodeList = jenkinsInstance.getNodes()
+  def stdout = System.out
+  def slave = null
+  def launcher = null
+
+  public JenkinsSlave() {
+  }
+
+  public void create() {
+    launcher = new SSHLauncher(host, port, credentialsID, null, null, null, null,
+			       launchTimeoutSeconds, maxNumRetries, retryWaitTime)
+    slave = new DumbSlave(name, nodeDescription, remoteFS, numExecutors, mode,
+    			  labelString, launcher, retentionStrategy, [])
+    def index = nodeList.indexOf(slave)
+    if (index >= 0) {
+      nodeList.set(index, slave)
+    }
+    else {
+      nodeList.add(slave)
+    }
+    jenkinsInstance.setNodes(nodeList)
+    save()
+  }
+
+  private save() {
+    jenkinsInstance.save()
+  }
+}
+
+def slave = new JenkinsSlave()
+slave.create()
+////////////////////////////////////////////////////////////////////////////////
+// Footer for log
+////////////////////////////////////////////////////////////////////////////////
+println("########## END: configuring slave: <%= @title %> ##########")
+////////////////////////////////////////////////////////////////////////////////

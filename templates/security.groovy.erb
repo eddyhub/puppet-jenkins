@@ -1,0 +1,238 @@
+/*
+ * The MIT License
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ */
+
+import hudson.model.User;
+import jenkins.model.IdStrategy.CaseSensitive;
+import hudson.plugins.sshslaves.*
+import hudson.security.ACL
+import hudson.security.AuthorizationStrategy
+import hudson.security.FullControlOnceLoggedInAuthorizationStrategy
+import hudson.security.GlobalMatrixAuthorizationStrategy
+import hudson.security.GlobalMatrixAuthorizationStrategy.PermissionAdderImpl
+import hudson.security.ProjectMatrixAuthorizationStrategy
+import hudson.security.HudsonPrivateSecurityRealm
+import hudson.security.LDAPSecurityRealm
+import hudson.security.Permission
+import hudson.util.Secret
+import jenkins.model.*
+
+import java.lang.System;
+
+// TODO:
+// * Add more comments and more log output, maybe even use an extra log file
+// * add tests
+////////////////////////////////////////////////////////////////////////////////
+// defines which puppet provides
+////////////////////////////////////////////////////////////////////////////////
+def securityRealm = "<%= @security_realm %>"
+def server = "<%= @ldap_server_fqdn %>"
+def rootDN = "<%= @ldap_rootdn %>"
+def userSearchBase =  "<%= @ldap_user_search_base %>"
+def userSearch =  "<%= @ldap_user_search %>"
+def groupSearchBase = null
+def groupSearchFilter = null
+def groupMembershipStrategy = null
+def managerDN = null
+def managerPasswordSecret = Secret.fromString("<%= @ldap_password %>")
+def inhibitInferRootDN = false
+def disableMailAddressResolver = false
+def cache = new LDAPSecurityRealm.CacheConfiguration(<%= @ldap_cache_size %>, <%= @ldap_cache_ttl %>)
+def environmentProperties = null
+def displayNameAttributeName = "<%= @ldap_display_name_attribute_name %>"
+def mailAddressAttributeName = "<%= @ldap_mail_address_attribute_name%>"
+def userIdStrategy = new IdStrategy.CaseSensitive()
+def groupIdStrategy = new IdStrategy.CaseSensitive()
+def authorizationStrategy = "<%= @authorization_strategy %>"
+////////////////////////////////////////////////////////////////////////////////
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Header for log
+////////////////////////////////////////////////////////////////////////////////
+println("########## START: configuring security: ${securityRealm} ##########")
+println("########## START: configuring authorization strategy: ${authorizationStrategy} ##########")
+////////////////////////////////////////////////////////////////////////////////
+
+class JenkinsSecurity {
+
+  def securityRealm = null
+  def stdout = null
+  def server = null
+  def rootDN = null
+  def userSearchBase = null
+  def userSearch = "uid={0}"
+  def groupSearchBase = null
+  def groupSearchFilter = null
+  def groupMembershipStrategy = null
+  def managerDN = null
+  def managerPasswordSecret = null
+  def inhibitInferRootDN = false
+  def disableMailAddressResolver = false
+  def cache = new LDAPSecurityRealm.CacheConfiguration(10, 600)
+  def environmentProperties = null
+  def displayNameAttributeName = "displayname"
+  def mailAddressAttributeName = "mail"
+  def userIdStrategy = new IdStrategy.CaseSensitive()
+  def groupIdStrategy = new IdStrategy.CaseSensitive()
+
+  def authorizationStrategy = null
+
+  def jenkinsInstance = Jenkins.getInstance();
+
+  public JenkinsSecurity(stdout,
+			 securityRealm,
+			 server,
+			 rootDN,
+			 userSearchBase,
+			 userSearch,
+			 groupSearchBase,
+			 groupSearchFilter,
+			 groupMembershipStrategy,
+			 managerDN,
+			 managerPasswordSecret,
+			 inhibitInferRootDN,
+			 disableMailAddressResolver,
+			 cache,
+			 environmentProperties,
+			 displayNameAttributeName,
+			 mailAddressAttributeName,
+			 userIdStrategy,
+			 groupIdStrategy,
+			 authorizationStrategy) {
+    this.stdout = stdout
+    this.securityRealm = securityRealm
+    this.server = server
+    this.rootDN = rootDN
+    this.userSearchBase = userSearchBase
+    this.userSearch = userSearch
+    this.groupSearchBase = groupSearchBase
+    this.groupSearchFilter = groupSearchFilter
+    this.groupMembershipStrategy = groupMembershipStrategy
+    this.managerDN = managerDN
+    this.managerPasswordSecret = managerPasswordSecret
+    this.inhibitInferRootDN = inhibitInferRootDN
+    this.disableMailAddressResolver = disableMailAddressResolver
+    this.cache = cache
+    this.environmentProperties = environmentProperties
+    this.displayNameAttributeName = displayNameAttributeName
+    this.mailAddressAttributeName = mailAddressAttributeName
+    this.userIdStrategy = userIdStrategy
+    this.groupIdStrategy = groupIdStrategy
+
+    this.authorizationStrategy = authorizationStrategy
+  }
+
+  /**
+   * Set up security for the Jenkins instance. Currently only
+   * 'disabled' or 'ldap' is supported.
+   */
+  void setSecurityRealm() {
+    def secRealm = null
+    stdout.println("Setting security realm to ${securityRealm}!")
+    if (securityRealm == 'disabled') {
+      jenkinsInstance.disableSecurity()
+      return
+    }
+    else if(securityRealm == 'ldap') {
+      secRealm = new LDAPSecurityRealm(server,
+				       rootDN,
+				       userSearchBase,
+				       userSearch,
+				       groupSearchBase,
+				       groupSearchFilter,
+				       groupMembershipStrategy,
+				       managerDN,
+				       managerPasswordSecret,
+				       inhibitInferRootDN,
+				       disableMailAddressResolver,
+				       cache,
+				       environmentProperties,
+				       displayNameAttributeName,
+				       mailAddressAttributeName,
+				       userIdStrategy,
+				       groupIdStrategy)
+    }
+    else {
+      stdout.println("Setting security realm to ${securityRealm} is not implemented!")
+      return
+    }
+    jenkinsInstance.setSecurityRealm(secRealm)
+    jenkinsInstance.save()
+  }
+
+  /**
+   * Set up authorization Strategy for the Jenkins instance. Currently only
+   * 'unsecured', 'full' and 'project_matrix' are supported.
+   */
+
+  void setAuthorizationStrategy() {
+    def authStrategy = null
+    stdout.println("Setting authorization strategy to ${authorizationStrategy}!")
+    if (authorizationStrategy == 'unsecured') {
+      authStrategy = new AuthorizationStrategy.Unsecured()
+    }
+    else if (authorizationStrategy == 'full') {
+      authStrategy = new FullControlOnceLoggedInAuthorizationStrategy()
+    }
+    else if (authorizationStrategy == 'project_matrix') {
+      authStrategy = new ProjectMatrixAuthorizationStrategy()
+    }
+    else {
+      stdout.println("Authorization strategy ${authorizationStrategy} is not implemented!")
+      return
+    }
+    jenkinsInstance.setAuthorizationStrategy(authStrategy)
+    jenkinsInstance.save()
+  }
+}
+
+def security = new JenkinsSecurity(System.out,
+				   securityRealm,
+				   server,
+				   rootDN,
+				   userSearchBase,
+				   userSearch,
+				   groupSearchBase,
+				   groupSearchFilter,
+				   groupMembershipStrategy,
+				   managerDN,
+				   managerPasswordSecret,
+				   inhibitInferRootDN,
+				   disableMailAddressResolver,
+				   cache,
+				   environmentProperties,
+				   displayNameAttributeName,
+				   mailAddressAttributeName,
+				   userIdStrategy,
+				   groupIdStrategy,
+				   authorizationStrategy)
+security.setSecurityRealm()
+security.setAuthorizationStrategy()
+////////////////////////////////////////////////////////////////////////////////
+// Footer for log
+////////////////////////////////////////////////////////////////////////////////
+println("########## END: configuring security: ${securityRealm} ##########")
+println("########## END: configuring authorization strategy: ${authorizationStrategy} ##########")
+////////////////////////////////////////////////////////////////////////////////
+
+
+
