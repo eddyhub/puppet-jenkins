@@ -112,6 +112,13 @@ class JenkinsPlugin {
     this.version = version
     plugin = pluginManager.getPlugin(shortName)
     this.status = status
+    updateAllSites()
+  }
+
+  public void updateAllSites() {
+    System.out.println("Updating update center metadata file")
+    updateCenter.updateAllSites()
+    System.out.println("Updating update center metadata file [done]")
   }
 
   private void load() {

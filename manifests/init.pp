@@ -158,6 +158,12 @@ class jenkins(
       notify  => Service['jenkins']
     }
   }
+  else {
+    class { 'jenkins::proxy':
+      enable => false,
+      notify  => Service['jenkins']
+    }
+  }
 
   include jenkins::service
 
