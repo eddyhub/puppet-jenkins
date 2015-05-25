@@ -34,6 +34,8 @@ define jenkins::credentials_domain::username_password (
   validate_string($username)
   validate_string($password)
   validate_string($description)
+  validate_re($scope, ['^SYSTEM$', '^GLOBAL$'])
+  validate_re($ensure, ['^present$', '^absent$'])
 
   Class['Jenkins::Config']-> Jenkins::Credentials_domain::Username_password[$title]
 

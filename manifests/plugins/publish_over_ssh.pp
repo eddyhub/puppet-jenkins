@@ -3,7 +3,7 @@
 # parameter: see plugin.pp for a detailed description
 class jenkins::plugins::publish_over_ssh(
   $encrypted_passphrase = undef,
-  $key = undef,
+  $private_key_string = undef,
   $disable_all_exec = true,
   $version = latest,
   $url     = undef,
@@ -27,9 +27,9 @@ class jenkins::plugins::publish_over_ssh(
     status  => $status,
   }
 
-  file {"${init_dir}/${plugin_config_configs_order}-plugin__publish-over-ssh__config.groovy":
+  file {"${init_dir}/${plugin_config_configs_order}-plugin__publish-over-ssh_common_config__config.groovy":
     ensure => present,
-    content => template("jenkins/publish_over_ssh_plugin_config.groovy.erb"),
+    content => template("jenkins/publish_over_ssh_plugin_common_config.groovy.erb"),
     owner   => $jenkins::params::username,
     group   => $jenkins::params::group,
     mode    => '0600',

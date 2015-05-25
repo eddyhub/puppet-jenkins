@@ -125,7 +125,7 @@ class JenkinsPlugin {
       catch (RestartRequiredException e) {
 	// This is just temporary, there will be a last script which
 	// restarts jenkins only once
-	stdout.println("Failed to load plugin: ${name}, restart required.}.")
+	stdout.println("Failed to load plugin: ${name}, restart required.")
 	restart()
       }
     }
@@ -137,6 +137,11 @@ class JenkinsPlugin {
   private void restart() {
     stdout.println("Installed plugin: ${name}, restarting...")
     jenkinsInstance.restart();
+    // sleep untill restart
+    while (true) {
+      sleep(1000)
+      stdout.println("Waiting for restart...")
+    }
     //jenkinsInstance.safeRestart();
   }
 

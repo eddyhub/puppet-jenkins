@@ -26,16 +26,25 @@ assert port < 65536
 
 class ProxyConfig {
 
-  def jenkinsInstace = jenkins.model.Jenkins.getInstance();
+  def jenkinsInstance = jenkins.model.Jenkins.getInstance()
+  def updateCenter = jenkinsInstance.getUpdateCenter()
+
   public ProxyConfig (hostname, port, userName, password, noProxyHost) {
     def proxyConfig = new hudson.ProxyConfiguration(hostname, port, userName, password, noProxyHost);
-    jenkinsInstace.proxy = proxyConfig
+    jenkinsInstance.proxy = proxyConfig
     proxyConfig.save()
     System.out.println("Proxy settings set and saved!")
   }
+
+  public void updateAllSites() {
+    System.out.println("Updating update center metadata file")
+    updateCenter.updateAllSites()
+    System.out.println("Updating update center metadata file [done]")
+  }
 }
 
-new ProxyConfig(hostname, port, userName, password, noProxyHost)
+def proxy = new ProxyConfig(hostname, port, userName, password, noProxyHost)
+proxy.updateAllSites()
 ////////////////////////////////////////////////////////////////////////////////
 // Footer for log
 ////////////////////////////////////////////////////////////////////////////////

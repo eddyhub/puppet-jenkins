@@ -23,6 +23,8 @@ define jenkins::plugin(
   if !defined(Class['jenkins']) {
     fail("${jenkins::params::exception_header}Exception occurred trying to install plugin: ${title}\nException message: You must include the jenkins base class before using any jenkins defined resources!${jenkins::params::exception_footer}")
   }
+  validate_re($ensure, ['^present$', '^absent$'])
+  validate_re($status, ['^enabled$', '^disabled$'])
 
   $init_dir = $jenkins::params::init_dir
   $plugin_config_order = $jenkins::params::plugin_config_order

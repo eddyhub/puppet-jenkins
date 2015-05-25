@@ -1,0 +1,109 @@
+/*
+ * The MIT License
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in
+ * all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ * THE SOFTWARE.
+ */
+
+import hudson.model.*
+import hudson.slaves.*
+import jenkins.model.*
+import jenkins.slaves.*
+import jenkins.plugins.publish_over_ssh.*
+import hudson.util.Secret
+
+////////////////////////////////////////////////////////////////////////////////
+// Header for log
+////////////////////////////////////////////////////////////////////////////////
+println("########## START: configuring publish-over-ssh plugin ssh host with title: <%= @title %> ##########")
+////////////////////////////////////////////////////////////////////////////////
+
+class PluginConfig {
+  def jenkinsInstance = Jenkins.getInstance();
+  def pluginInstance = jenkinsInstance.getDescriptor("jenkins.plugins.publish_over_ssh.BapSshPublisherPlugin")
+  def hostConfigurations = pluginInstance.getHostConfigurations()
+  def stdout = System.out
+
+  public PluginConfig() {}
+
+  public void create() {
+    //////////////////////////////////////////////////////////////////////////////
+    // defines which puppet provides
+    //////////////////////////////////////////////////////////////////////////////
+
+    def name = "<%= @title %>"
+    def hostname = "<%= @hostname %>"
+    def username = "<%= @username %>"
+
+    <% if @password_passphrase != nil %>
+    def passphrase = "<%= @password_passphrase %>"
+    <% else %>
+    def passphrase = null
+    <% end %>
+
+    def remoteRooDir = "<%= @remote_root_dir %>"
+    def port = <%= @port %>
+    def timeout = <%= @timeout %>
+    def overrideKey = <%= @override_key %>
+    def keyPath = null
+
+    <% if @private_key_string != nil %>
+    def privateKeyString = '''<%= @private_key_string %>'''
+    <% else %>
+    def privateKeyString = null
+    <% end %>
+
+    def disableExec = <%= @disable_exec %>
+
+    def hostConfiguration = new BapSshHostConfiguration(name,
+							hostname,
+							username,
+							passphrase,
+							remoteRooDir,
+							port,
+							timeout,
+							overrideKey,
+							keyPath,
+							privateKeyString,
+							disableExec)
+    if (hostConfigurations != null) {
+      stdout.println("Removing ssh host with title: ${name}")
+      pluginInstance.removeHostConfiguration(name)
+    }
+
+    <% if @ensure == 'present' %>
+    stdout.println("Adding ssh host with title: ${name}")
+    pluginInstance.addHostConfiguration(hostConfiguration)
+    <% end %>
+    //////////////////////////////////////////////////////////////////////////////
+    save()
+  }
+
+  private save() {
+    pluginInstance.save()
+    jenkinsInstance.save()
+  }
+}
+
+def pluginConfig = new PluginConfig()
+pluginConfig.create()
+////////////////////////////////////////////////////////////////////////////////
+// Footer for log
+////////////////////////////////////////////////////////////////////////////////
+println("########## END: configuring publish-over-ssh plugin ssh host with title: <%= @title %> ##########")
+////////////////////////////////////////////////////////////////////////////////

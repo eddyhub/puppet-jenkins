@@ -37,6 +37,8 @@ define jenkins::credentials_domain::ssh (
   validate_string($passphrase)
   validate_string($private_key_string)
   validate_string($description)
+  validate_re($scope, ['^SYSTEM$', '^GLOBAL$'])
+  validate_re($ensure, ['^present$', '^absent$'])
 
   Class['Jenkins::Config']-> Jenkins::Credentials_domain::Ssh[$title]
 

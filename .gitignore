@@ -13,3 +13,4 @@ spec/fixtures
 Gemfile.lock
 .vagrant*
 .bundle
+tests/nodes.pp

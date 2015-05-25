@@ -121,9 +121,9 @@ define jenkins::node (
   validate_string($retry_wait_time)
   validate_string($label)
   validate_string($ensure)
+  validate_re($ensure, ['^present$', '^absent$'])
 
   Class['Jenkins::Config']->Jenkins::Node["${title}"]
-  #  Class['Jenkins::Config']->Class['Jenkins::Security']->Jenkins::Node["${title}"]
 
   $init_dir          = $jenkins::params::init_dir
   $nodes_dir         = $jenkins::params::nodes_dir
