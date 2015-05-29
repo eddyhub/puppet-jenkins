@@ -21,7 +21,7 @@ define jenkins::credentials_domain::username_password (
   $scope = 'SYSTEM',
   $username = undef,
   $password = undef,
-  $description = 'Managed by puppet!',
+  $description = "${title} is managed by puppet!",
   $ensure = 'present',
   ) {
 

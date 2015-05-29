@@ -4,7 +4,7 @@
 class jenkins::plugins::publish_over_ssh(
   $encrypted_passphrase = undef,
   $private_key_string = undef,
-  $disable_all_exec = true,
+  $disable_all_exec = false,
   $version = latest,
   $url     = undef,
   $ensure  = present,

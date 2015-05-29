@@ -24,7 +24,7 @@ define jenkins::credentials_domain::ssh (
   $username = undef,
   $passphrase = undef,
   $private_key_string = undef,
-  $description = 'Managed by puppet!',
+  $description = "${title} is managed by puppet!",
   ) {
 
   $init_dir = $jenkins::params::init_dir

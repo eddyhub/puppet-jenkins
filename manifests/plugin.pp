@@ -26,18 +26,45 @@ define jenkins::plugin(
   validate_re($ensure, ['^present$', '^absent$'])
   validate_re($status, ['^enabled$', '^disabled$'])
 
+  if $version != 'latest' and url == undef {
+    fail("${jenkins::params::exception_header}Exception occurred trying to install plugin: ${title}\nException message: You have to specify an URL if you want to install a specific version${jenkins::params::exception_footer}")
+  }
+
   $init_dir = $jenkins::params::init_dir
   $plugin_config_order = $jenkins::params::plugin_config_order
   $plugins_dir =  $jenkins::params::plugins_dir
+  $json_dir = "${init_dir}/plugins"
 
-  #Class['Jenkins::Config']->Jenkins::Plugin["${title}"]
-  if $ensure == 'present' {
-    file {"${init_dir}/${plugin_config_order}-plugin__${name}__.groovy":
+  if (!defined(File["${init_dir}/${plugin_config_order}-plugin.groovy"])) {
+    file {"${init_dir}/${plugin_config_order}-plugin.groovy":
       ensure => present,
       content => template("jenkins/plugin.groovy.erb"),
       owner   => $jenkins::params::username,
       group   => $jenkins::params::group,
       mode    => '0600',
+      notify  => Service['jenkins'],
+    }
+  }
+  if (!defined(File[$json_dir])) {
+    file {$json_dir:
+      ensure => directory,
+      owner   => $jenkins::params::username,
+      group   => $jenkins::params::group,
+      mode    => '0700',
+      notify  => Service['jenkins'],
+    }
+  }
+
+
+  #Class['Jenkins::Config']->Jenkins::Plugin["${title}"]
+  if $ensure == 'present' {
+    file {"${json_dir}/plugin__${name}__.json":
+      ensure => present,
+      content => template("jenkins/plugin.json.erb"),
+      owner   => $jenkins::params::username,
+      group   => $jenkins::params::group,
+      mode    => '0600',
+      require => File[$json_dir],
       notify  => Service['jenkins'],
     }
 

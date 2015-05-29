@@ -1,51 +1,37 @@
-# Define: jenkins::job
-#
-#   This class create a new jenkins job given a name and config xml
-#
-# Parameters:
-#
-#   config
-#     the content of the jenkins job config file (required)
-#
-#   source
-#     path to a puppet file() resource containing the Jenkins XML job description
-#     will override 'config' if set
-#
-#   jobname = $title
-#     the name of the jenkins job
-#
-#   enabled = true
-#     whether to enable the job
-#
-#   ensure = 'present'
-#     choose 'absent' to ensure the job is removed
-#
 define jenkins::job(
-  $config,
-  $source   = undef,
-  $jobname  = $title,
-  $enabled  = 1,
-  $ensure   = 'present',
-){
+  $job_xml = undef,
+  $enable = true
+  ) {
 
-  if ($ensure == 'absent') {
-    jenkins::job::absent { $title:
-      jobname => $jobname,
-    }
-  } else {
-    if $source {
-      validate_string($source)
-      $realconfig = file($source)
-    }
-    else {
-      $realconfig = $config
+  $jobs_dir           = $jenkins::params::jobs_dir
+
+  if $job_xml == undef {
+    fail("You have to specify the job_xml to create the job ${title}")
+  }
+  if $enable == true {
+    file {"${jobs_dir}/${title}":
+      ensure => directory,
+      owner   => $jenkins::params::username,
+      group   => $jenkins::params::group,
+      mode    => '0755',
+      notify  => Service['jenkins'],
     }
 
-    jenkins::job::present { $title:
-      config  => $realconfig,
-      jobname => $jobname,
-      enabled => $enabled,
+    file {"${jobs_dir}/${title}/config.xml":
+      ensure => present,
+      content => $job_xml,
+      owner   => $jenkins::params::username,
+      group   => $jenkins::params::group,
+      mode    => '0644',
+      notify  => Service['jenkins'],
     }
   }
-
+  else {
+    file {"${jobs_dir}/${title}":
+      ensure => absent,
+      recurse => true,
+      force => true,
+      notify  => Service['jenkins'],
+    }
+  }
 }

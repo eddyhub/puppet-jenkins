@@ -39,14 +39,9 @@ import java.util.List;
 import java.util.ArrayList;
 import java.util.Set;
 import java.lang.System;
+import groovy.json.JsonSlurper;
+import groovy.io.FileType;
 import jenkins.RestartRequiredException;
-
-// yeah I know these elements should be in capital letters, but puppet people
-// are not used to it.
-public enum Status {
-  enabled,
-  disabled,
-}
 
 
 // TODO:
@@ -58,31 +53,11 @@ public enum Status {
 // * Enable/disable plugin
 // * Fix error if plugin is installed by url but the url points to a different version
 // * add tests
-////////////////////////////////////////////////////////////////////////////////
-// defines which puppet provides
-////////////////////////////////////////////////////////////////////////////////
-
-<% if @url != nil %>
-<% if @version == 'latest' %>
-fail('You have to specify a version number if you use urls for plugins')
-<% end %>
-def name = "<%= @url %>"
-def version = "<%= @version %>"
-<% else %>
-def name = "<%= @name %>"
-def version = "<%= @version %>"
-<% end %>
-
-def shortName = "<%= @short_name %>"
-
-def status = Status.<%= @status %>
-////////////////////////////////////////////////////////////////////////////////
-
 
 ////////////////////////////////////////////////////////////////////////////////
 // Header for log
 ////////////////////////////////////////////////////////////////////////////////
-println("########## START: installing plugin: ${shortName} ##########")
+println("########## BEGIN: installing plugins ##########")
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
@@ -90,29 +65,52 @@ println("########## START: installing plugin: ${shortName} ##########")
  * Much of the code is from the package hudson.cli
  */
 
-class JenkinsPlugin {
+class JenkinsPluginManager {
 
-  def name = null
-  def shortName = null
-  def version = null
   def stdout = null
-  def dynamicLoad = true
-  def restart = true
+  def needRestart = false
   def jenkinsInstance = Jenkins.getInstance();
   def pluginManager = jenkinsInstance.getPluginManager()
   def pluginsList = pluginManager.plugins.sort()
   def updateCenter = jenkinsInstance.getUpdateCenter()
-  def plugin = null
-  def status = null
+  def listOfRequestedPlugins = []
+  def listOfPluginsToInstall = []
+  def listOfPluginsToDisable = []
+  def listOfPluginsToRemove = pluginsList.collect { pluginWrapper -> pluginWrapper.getShortName() }
+  def fileNamePattern = ~/plugin.*\.json/
 
-  public JenkinsPlugin(stdout, name, shortName, version, status=Status.enabled) {
+  public JenkinsPluginManager(stdout, jsonDir) {
     this.stdout = stdout
-    this.shortName = shortName
-    this.name = name
-    this.version = version
-    plugin = pluginManager.getPlugin(shortName)
-    this.status = status
     updateAllSites()
+    stdout.println("Cheking ${jsonDir} for plugin.*\\.json.")
+    new File(jsonDir).eachFileMatch(FileType.FILES, fileNamePattern) {file ->
+      stdout.println("Found plugin description: ${file}")
+      listOfRequestedPlugins << new JsonSlurper().parse(new BufferedReader(new FileReader(file)))
+    }
+    listOfRequestedPlugins.each { jsonDoc ->
+      def version = updateCenter.getPlugin(jsonDoc.shortName).version
+      def url = updateCenter.getPlugin(jsonDoc.shortName).url
+      jsonDoc.urlAdded = false
+      if(jsonDoc.version == 'latest') {
+	jsonDoc.version = version
+      }
+      if(jsonDoc.url == '') {
+	jsonDoc.url = url
+	jsonDoc.urlAdded = true
+      }
+    }
+    listOfRequestedPlugins.each { jsonDoc ->
+      if(pluginManager.getPlugin(jsonDoc.shortName) == null ||
+	 pluginManager.getPlugin(jsonDoc.shortName).getVersion() != jsonDoc.version) {
+	stdout.println("Plugin ${jsonDoc.shotName} not installed or version missmatch.")
+	listOfPluginsToInstall << jsonDoc
+      }
+      listOfPluginsToRemove.remove(jsonDoc.shortName)
+    }
+    listOfPluginsToInstall.each { jsonDoc ->
+      install(jsonDoc)
+    }
+    if(needRestart) { restart() }
   }
 
   public void updateAllSites() {
@@ -121,158 +119,74 @@ class JenkinsPlugin {
     System.out.println("Updating update center metadata file [done]")
   }
 
-  private void load() {
-    if (dynamicLoad) {
-      try {
-	pluginManager.dynamicLoad(getTargetFile());
-      }
-      catch (IOException e) {
-	stdout.println("IO error: Failed to load plugin: ${name}.\n${e}")
-      }
-      catch (RestartRequiredException e) {
-	// This is just temporary, there will be a last script which
-	// restarts jenkins only once
-	stdout.println("Failed to load plugin: ${name}, restart required.")
-	restart()
-      }
-    }
-    else {
-      restart()
-    }
-  }
-
   private void restart() {
-    stdout.println("Installed plugin: ${name}, restarting...")
     jenkinsInstance.restart();
     // sleep untill restart
     while (true) {
       sleep(1000)
       stdout.println("Waiting for restart...")
     }
-    //jenkinsInstance.safeRestart();
   }
 
-  public void uninstall() {
-    plugin.doDoUninstall()
-  }
-
-  public void enable() {
-    plugin.disable()
-  }
-
-  public void disable() {
-    plugin.enable()
-  }
-
-  public void pin() {
-    plugin.doPin()
-  }
-
-  public void unPin() {
-    plugin.doUnpin()
-  }
-
-  public void setStatus() {
-    switch (status) {
-    case Status.enabled: if (!(plugin.isEnabled())) enable()
-      break
-    case Status.disabled: if (plugin.isEnabled()) disable()
-      break
-    }
-  }
-
-  private boolean isInstalled() {
-    // Set version to latest version number, so we can compare,
-    // otherwise plugin.getVersion() will always be != version because
-    // version just contains the string 'latest'
-    if (version == 'latest') {
-      version = updateCenter.getPlugin(shortName).version
+  void install(jsonPluginDescription) throws Exception {
+    // is this a file?
+    def shortName = jsonPluginDescription.shortName
+    def url = jsonPluginDescription.url
+    def urlAdded = jsonPluginDescription.urlAdded
+    stdout.println("Installing plugin: ${shortName}...")
+    //is it a file
+    FilePath f = new FilePath(new File(url));
+    if (f.exists()) {
+      stdout.println("Installing plugin from local file: ${f}");
+      f.copyTo(getTargetFilePath(shortName));
     }
 
-    if (plugin == null) {
-      return false
-    }
-
-    else if (plugin.getVersion() != version) {
-      stdout.println("Plugin version missmatch: ${shortName} ${version}")
-      stdout.println("currently installed: ${shortName} ${plugin.getVersion()}")
-      stdout.println("should be: ${shortName} ${version}")
-      stdout.println("Uninstalling plugin: ${shortName} ${plugin.getVersion()}")
-      uninstall()
-      return false
+    // is it an web URL?
+    if(!urlAdded) {
+      try {
+	URL tmpUrl = new URL(url);
+	stdout.println("Installing plugin from url ${tmpUrl}");
+	getTargetFilePath().copyFrom(tmpUrl);
+      }
+      catch (MalformedURLException e) {
+	// not an URL
+      }
     }
     else {
-      stdout.println("Plugin already installed: ${shortName} ${version}")
-      setStatus()
-      return true
+      // is this a name the update center?
+      UpdateSite.Plugin p = updateCenter.getPlugin(shortName);
+      stdout.println("Installing plugin via UpdateCenter");
+      if (p!=null) {
+	Throwable e = p.deploy(true).get().getError();
+	if (e!=null) {
+	  throw new IOException("Failed to install plugin "+shortName,e);
+	}
+      }
+    }
+    try {
+      pluginManager.dynamicLoad(getTargetFile(shortName))
+    }
+    catch (IOException e) {
+      stdout.println("Couldn't load plugin: Could not read file ${getTargetFile(shortName)}")
+    }
+    catch (RestartRequiredException e) {
+      stdout.println("Couldn't load plugin while running: Restart required -> Restarting after all plugins are installed")
+      needRestart = true
     }
   }
 
-  void install() throws Exception {
-    if (!isInstalled()) {
-	// is this a file?
-	FilePath f = new FilePath(new File(name));
-	if (f.exists()) {
-	  stdout.println("Installing plugin from local file: ${f}");
-	  f.copyTo(getTargetFilePath());
-	  load()
-	}
-
-	// is this an URL?
-	try {
-	  URL url = new URL(name);
-	  stdout.println("Installing plugin from url ${url}");
-	  getTargetFilePath().copyFrom(url);
-	  load()
-	}
-	catch (MalformedURLException e) {
-	  // not an URL
-	}
-
-	// is this a name the update center?
-	UpdateSite.Plugin p = updateCenter.getPlugin(name);
-	if (p!=null) {
-	  Throwable e = p.deploy(dynamicLoad).get().getError();
-	  if (e!=null) {
-	    throw new IOException("Failed to install plugin "+name,e);
-	  }
-	  load()
-	}
-
-	//    stdout.println(Messages.InstallNameCommand_NotAValidSourceName(name));
-
-	if (!name.contains(".") && !name.contains(":") && !name.contains("/") && !name.contains("\\")) {
-	  // looks like a short name name. Why did we fail to find it in the update center?
-	  if (jenkinsInstance.getUpdateCenter().getSites().isEmpty()) {
-	    stdout.println("Error: No update center defined")
-	  }
-	  else {
-	    Set<String> candidates = new HashSet<String>();
-	    for (UpdateSite s : jenkinsInstance.getUpdateCenter().getSites()) {
-	      Data dt = s.getData();
-	      if (dt==null)
-		stdout.println("No update data retrieved")
-		else
-		candidates.addAll(dt.plugins.keySet());
-	    }
-	  }
-	}
-    }
+  private FilePath getTargetFilePath(shortName) {
+    return new FilePath(getTargetFile(shortName));
   }
 
-  private FilePath getTargetFilePath() {
-    return new FilePath(getTargetFile());
-  }
-
-  private File getTargetFile() {
-    return new File(Jenkins.getInstance().getPluginManager().rootDir,shortName+".jpi");
+  private File getTargetFile(shortName) {
+    return new File(pluginManager.rootDir,shortName+".jpi");
   }
 }
 
-def p = new JenkinsPlugin(System.out, name, shortName, version, status)
-p.install()
+new JenkinsPluginManager(System.out, "<%= @json_dir %>")
 ////////////////////////////////////////////////////////////////////////////////
 // Footer for log
 ////////////////////////////////////////////////////////////////////////////////
-println("########## END: installing plugin: ${shortName} ##########")
+println("########## END: installing plugins ##########")
 ////////////////////////////////////////////////////////////////////////////////

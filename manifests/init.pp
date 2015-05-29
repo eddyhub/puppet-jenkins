@@ -150,7 +150,6 @@ class jenkins(
   include jenkins::package
   include jenkins::config
   include jenkins::plugins
-  include jenkins::jobs
 
   if $proxy_hostname and $proxy_port {
     class { 'jenkins::proxy':
@@ -185,7 +184,6 @@ class jenkins(
 #        Class['jenkins::proxy']
           Class['jenkins::plugins'] ~>
             Class['jenkins::service'] ->
-              Class['jenkins::jobs'] ->
                 Anchor['jenkins::end']
 
   # if $cli {

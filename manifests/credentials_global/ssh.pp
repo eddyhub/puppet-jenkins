@@ -22,7 +22,7 @@ define jenkins::credentials_global::ssh (
   $username = undef,
   $passphrase = undef,
   $private_key_string = undef,
-  $description = 'Managed by puppet!',
+  $description = "${title} is managed by puppet!",
   $ensure = 'present',
   ) {
 

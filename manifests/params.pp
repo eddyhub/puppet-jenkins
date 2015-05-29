@@ -42,6 +42,7 @@ class jenkins::params {
   $credentials_domain_config_order = 4000
   $credentials_config_order = 5000
   $node_config_order = 6000
+  $job_config_order = 7000
 
 
   case $::osfamily {
